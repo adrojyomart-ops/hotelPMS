@@ -171,14 +171,36 @@ if(!d || !d.rooms){
 
   // DB empty – first time only
   rooms = [];
+
+  roomNumbers.forEach(n=>{
+    rooms.push({
+      roomNo:n,
+      status:"Vacant",
+
+      guest:"",
+      rate:"",
+      plan:"",
+      source:"",
+      folio:0,
+
+      lastGuest:"",
+      lastRate:"",
+      lastPlan:"",
+      lastSource:"",
+
+      checkInAt:"",
+      checkOutAt:""
+    });
+  });
+
   logs = [];
   bookingSources = ["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
   businessDate = todayISO();
   todayCheckouts = 0;
 
+  save();   // 👉 very important
   return;
 }
-
 rooms = d.rooms || [];
 logs = d.logs || [];
 bookingSources = d.bookingSources || ["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
@@ -204,7 +226,7 @@ todayCheckouts = d.todayCheckouts || 0;
 }catch(e){
   alert("DB load failed");
   console.log(e);
-  init();
+  
 }
 
 }
@@ -522,5 +544,6 @@ load().then(render);
 </script>
 </body>
 </html>
+
 
 
