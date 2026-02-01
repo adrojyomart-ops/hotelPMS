@@ -97,6 +97,7 @@ let businessDate="";
 
 const KEY="ROHIT_PMS_V6";
 const BACKUP_KEY = "ROHIT_PMS_V6_BACKUP";
+const SERVER_URL = "https://script.google.com/macros/s/AKfycbxsY_lyxQqE-Gq8zNRI6OqEUdLoUMuOJy33tpsmRL-rasc3cSlTFnwnNOSKZo6iOjdk/exec";
 
 /* ---------- helpers ---------- */
 
@@ -186,21 +187,47 @@ return true;
 
 
 function save(){
-localStorage.setItem(KEY,JSON.stringify({
+
+let payload = JSON.stringify({
 rooms,logs,todayCheckouts,bookingSources,businessDate
-}));
+});
+
+fetch(SERVER_URL,{
+method:"POST",
+body: payload
+})
+.catch(e=>console.error(e));
+
 }
 
 function load(){
-let d=localStorage.getItem(KEY);
-if(!d){init();return;}
-d=JSON.parse(d);
+
+fetch(SERVER_URL)
+.then(r=>r.text())
+.then(t=>{
+
+if(!t){
+init();
+render();
+return;
+}
+
+let d = JSON.parse(t);
+
 rooms=d.rooms||[];
 logs=d.logs||[];
 bookingSources=d.bookingSources||["Walk-in"];
 businessDate=d.businessDate||todayISO();
 todayCheckouts=d.todayCheckouts||0;
+
+render();
+
+})
+.catch(err=>{
+alert("Server not reachable. Offline mode not enabled.");
+});
 }
+
 
 /* ---------- booking source ---------- */
 
