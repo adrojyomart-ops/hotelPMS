@@ -63,6 +63,9 @@ padding:4px;
 
 <button class="btn-audit" onclick="nightAudit()">Night Audit</button>
 <button class="btn-reset" onclick="resetAll()">Reset</button>
+<button onclick="manualBackup()">Manual Backup</button>
+<button onclick="manualRestore()">Restore Backup</button>
+<button onclick="openDataManager()">Edit / Delete Data</button>
 </div>
 
 <div class="dashboard">
@@ -93,6 +96,7 @@ let bookingSources=[];
 let businessDate="";
 
 const KEY="ROHIT_PMS_V6";
+const BACKUP_KEY = "ROHIT_PMS_V6_BACKUP";
 
 /* ---------- helpers ---------- */
 
@@ -143,6 +147,43 @@ save();
 }
 
 /* ---------- storage ---------- */
+function backupNow(){
+let live = localStorage.getItem(KEY);
+if(!live){
+alert("No live data found to backup.");
+return false;
+}
+localStorage.setItem(BACKUP_KEY, live);
+return true;
+}
+function manualBackup(){
+let ok = backupNow();
+if(ok){
+alert("Manual backup created successfully.");
+}
+}
+
+function manualRestore(){
+if(!confirm("Restore data from last backup? Current data will be replaced.")) return;
+let ok = restoreFromBackup();
+if(ok){
+alert("Backup restored successfully.");
+}
+}
+
+
+function restoreFromBackup(){
+let b = localStorage.getItem(BACKUP_KEY);
+if(!b){
+alert("No backup found.");
+return false;
+}
+localStorage.setItem(KEY, b);
+load();
+render();
+return true;
+}
+
 
 function save(){
 localStorage.setItem(KEY,JSON.stringify({
@@ -417,11 +458,24 @@ alert("Night audit done.\nBusiness date : "+businessDate);
 /* ---------- reset ---------- */
 
 function resetAll(){
-if(!confirm("Reset all PMS data?")) return;
+
+if(!confirm("Before reset, system will take mandatory backup.\nContinue?"))
+return;
+
+/* mandatory backup */
+let ok = backupNow();
+if(!ok) return;
+
 localStorage.removeItem(KEY);
-init();
-render();
+
+/* auto restore last backup */
+setTimeout(()=>{
+restoreFromBackup();
+alert("Reset completed.\nLast backup restored successfully.");
+},100);
+
 }
+
 
 /* ---------- exports ---------- */
 
@@ -470,6 +524,90 @@ a.click();
 
 load();
 render();
+function openDataManager(){
+
+let no = prompt("Enter Room Number to Edit / Delete");
+if(!no) return;
+
+let r = rooms.find(x => x.roomNo === no);
+
+if(!r){
+alert("Room not found");
+return;
+}
+
+let menu =
+"Room "+no+"\n\n"+
+"1 = Edit Guest / Rate / Plan / Source\n"+
+"2 = Clear this room (make Vacant)\n"+
+"3 = Delete all logs of this room\n";
+
+let c = prompt(menu);
+if(!c) return;
+
+
+/* ----- EDIT ROOM DATA ----- */
+if(c==="1"){
+
+let g = prompt("Guest name", r.guest);
+if(g===null) return;
+
+let rate = prompt("Room rate", r.rate);
+if(rate===null) return;
+
+let plan = prompt("Plan (EP / CP / MAP / AP)", r.plan);
+if(plan===null) return;
+
+let src = prompt("Source", r.source);
+if(src===null) return;
+
+r.guest = g;
+r.rate = rate;
+r.plan = plan;
+r.source = src;
+
+save();
+render();
+alert("Room data updated.");
+
+}
+
+
+/* ----- DELETE / CLEAR ROOM ----- */
+else if(c==="2"){
+
+if(!confirm("Clear this room completely and make it Vacant?")) return;
+
+r.guest="";
+r.rate="";
+r.plan="";
+r.source="";
+r.folio=0;
+r.status="Vacant";
+r.checkInAt="";
+r.checkOutAt="";
+
+save();
+render();
+alert("Room cleared.");
+
+}
+
+
+/* ----- DELETE ROOM LOGS ----- */
+else if(c==="3"){
+
+if(!confirm("Delete all logs of this room?")) return;
+
+logs = logs.filter(l => l.room !== no);
+
+save();
+alert("Logs deleted for room "+no);
+
+}
+
+}
+
 
 </script>
 </body>
