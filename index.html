@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Hotel Room PMS</title>
+
+<style>
+body{font-family:Arial;background:#f4f6f8;padding:20px}
+
+.dashboard{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+
+.card{background:#fff;padding:12px;border-radius:8px;min-width:140px;text-align:center;box-shadow:0 0 5px rgba(0,0,0,.1)}
+
+.top-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+
+button{padding:6px 10px;border:0;border-radius:5px;cursor:pointer}
+
+.btn-export{background:#3498db;color:#fff}
+.btn-daily{background:#27ae60;color:#fff}
+.btn-reset{background:#e74c3c;color:#fff}
+.btn-audit{background:#8e44ad;color:#fff}
+
+.room-grid{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+gap:12px
+}
+
+.room-box{
+height:135px;
+border-radius:10px;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+color:#fff;
+font-size:13px;
+cursor:pointer;
+text-align:center;
+padding:4px;
+}
+
+.room-vacant{background:#2ecc71}
+.room-occupied{background:#e74c3c}
+.room-blocked{background:#7f8c8d}
+
+.room-no{font-weight:bold;font-size:15px}
+.small{font-size:11px}
+</style>
+</head>
+<body>
+
+<h2>Hotel Room PMS</h2>
+
+<div class="top-actions">
+<button class="btn-export" onclick="exportCurrent()">Export Current Status</button>
+<button class="btn-daily" onclick="exportDaily()">Export Daily Report</button>
+
+<button onclick="setFilter('all')">All</button>
+<button onclick="setFilter('Occupied')">Occupied</button>
+<button onclick="setFilter('Vacant')">Vacant</button>
+<button onclick="setFilter('Blocked')">Maintenance</button>
+
+<button class="btn-audit" onclick="nightAudit()">Night Audit</button>
+<button class="btn-reset" onclick="resetAll()">Reset</button>
+</div>
+
+<div class="dashboard">
+<div class="card">Business Date<br><b id="bizDate"></b></div>
+<div class="card">Total<br><b id="tTotal"></b></div>
+<div class="card">Occupied<br><b id="tOcc"></b></div>
+<div class="card">Vacant<br><b id="tVac"></b></div>
+<div class="card">Maintenance<br><b id="tBlk"></b></div>
+<div class="card">Checkout Today<br><b id="tCo"></b></div>
+</div>
+
+<div id="roomGrid" class="room-grid"></div>
+
+<script>
+
+const roomNumbers=[
+"001","002",
+"101","102","103","104","105","106",
+"201","202","203","204","205","206",
+"301","302","303","304"
+];
+
+let rooms=[];
+let logs=[];
+let todayCheckouts=0;
+let filter="all";
+let bookingSources=[];
+let businessDate="";
+
+const KEY="ROHIT_PMS_V6";
+
+/* ---------- helpers ---------- */
+
+function todayISO(){
+return new Date().toISOString().slice(0,10);
+}
+function now(){
+return new Date().toISOString();
+}
+function nextDate(d){
+let x=new Date(d);
+x.setDate(x.getDate()+1);
+return x.toISOString().slice(0,10);
+}
+
+/* ---------- init ---------- */
+
+function init(){
+
+businessDate=todayISO();
+
+rooms=[];
+roomNumbers.forEach(n=>{
+rooms.push({
+roomNo:n,
+status:"Vacant",
+
+guest:"",
+rate:"",
+plan:"",
+source:"",
+folio:0,
+
+lastGuest:"",
+lastRate:"",
+lastPlan:"",
+lastSource:"",
+
+checkInAt:"",
+checkOutAt:""
+});
+});
+
+bookingSources=["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
+logs=[];
+todayCheckouts=0;
+save();
+}
+
+/* ---------- storage ---------- */
+
+function save(){
+localStorage.setItem(KEY,JSON.stringify({
+rooms,logs,todayCheckouts,bookingSources,businessDate
+}));
+}
+
+function load(){
+let d=localStorage.getItem(KEY);
+if(!d){init();return;}
+d=JSON.parse(d);
+rooms=d.rooms||[];
+logs=d.logs||[];
+bookingSources=d.bookingSources||["Walk-in"];
+businessDate=d.businessDate||todayISO();
+todayCheckouts=d.todayCheckouts||0;
+}
+
+/* ---------- booking source ---------- */
+
+function chooseBookingSource(){
+
+let txt="Select Booking Source\n\n";
+bookingSources.forEach((s,i)=>{txt+=(i+1)+". "+s+"\n";});
+txt+="\n0. Add new source";
+
+let c=prompt(txt);
+if(!c) return null;
+
+if(c==="0"){
+let n=prompt("Enter new booking source");
+if(!n) return null;
+bookingSources.push(n);
+save();
+return n;
+}
+
+let i=parseInt(c);
+if(isNaN(i)||i<1||i>bookingSources.length){
+alert("Invalid choice"); return null;
+}
+return bookingSources[i-1];
+}
+
+/* ---------- PLAN chooser (validated) ---------- */
+
+function choosePlan(){
+
+let c=prompt(
+"Select Plan\n\n"+
+"1 = EP\n"+
+"2 = CP\n"+
+"3 = MAP\n"+
+"4 = AP"
+);
+
+if(!c) return null;
+
+if(c==="1") return "EP";
+if(c==="2") return "CP";
+if(c==="3") return "MAP";
+if(c==="4") return "AP";
+
+alert("Only 1,2,3,4 allowed");
+return null;
+}
+
+/* ---------- room action ---------- */
+
+function roomAction(no){
+
+let r=rooms.find(x=>x.roomNo===no);
+
+let menu=
+"Room "+no+" ("+r.status+")\n"+
+"1 Check In\n"+
+"2 Check Out\n"+
+"3 Block(Maint)\n"+
+"4 Unblock\n";
+
+if(r.status==="Occupied"){
+menu+="5 Stay On / Post Charge\n";
+}
+
+let c=prompt(menu);
+if(!c) return;
+
+/* ---- Check In ---- */
+
+if(c==="1"){
+
+if(r.status!=="Vacant"){alert("Room not vacant");return;}
+
+let g=prompt("Guest name");
+if(!g) return;
+
+let rate=prompt("Room Rate (INR)");
+if(rate===null || rate==="") return;
+
+let plan=choosePlan();
+if(!plan) return;
+
+let src=chooseBookingSource();
+if(!src) return;
+
+r.guest=g;
+r.rate=rate;
+r.plan=plan;
+r.source=src;
+r.folio=0;
+
+r.lastGuest=g;
+r.lastRate=rate;
+r.lastPlan=plan;
+r.lastSource=src;
+
+r.status="Occupied";
+r.checkInAt=now();
+r.checkOutAt="";
+
+logs.push({
+bizDate:businessDate,time:new Date().toLocaleTimeString(),
+room:no,action:"Check In",
+guest:g,rate:rate,plan:plan,source:src,amount:""
+});
+}
+
+/* ---- Check Out ---- */
+
+else if(c==="2"){
+
+if(r.status!=="Occupied"){alert("Room not occupied");return;}
+
+r.checkOutAt=now();
+
+logs.push({
+bizDate:businessDate,time:new Date().toLocaleTimeString(),
+room:no,action:"Check Out",
+guest:r.guest,rate:r.rate,plan:r.plan,source:r.source,amount:r.folio
+});
+
+r.guest="";
+r.rate="";
+r.plan="";
+r.source="";
+r.status="Vacant";
+
+todayCheckouts++;
+}
+
+/* ---- Block ---- */
+
+else if(c==="3"){
+
+if(r.status==="Occupied"){alert("Occupied room");return;}
+
+r.guest="";r.rate="";r.plan="";r.source="";
+r.status="Blocked";
+r.checkInAt="";r.checkOutAt="";
+
+logs.push({
+bizDate:businessDate,time:new Date().toLocaleTimeString(),
+room:no,action:"Blocked",guest:"",rate:"",plan:"",source:"",amount:""
+});
+}
+
+/* ---- Unblock ---- */
+
+else if(c==="4"){
+
+r.guest="";r.rate="";r.plan="";r.source="";
+r.status="Vacant";
+r.checkInAt="";r.checkOutAt="";
+
+logs.push({
+bizDate:businessDate,time:new Date().toLocaleTimeString(),
+room:no,action:"Unblocked",guest:"",rate:"",plan:"",source:"",amount:""
+});
+}
+
+/* ---- Stay on + Charge post ---- */
+
+else if(c==="5" && r.status==="Occupied"){
+
+let amt=prompt("Post charge amount (INR)");
+if(amt===null || amt==="") return;
+
+let val=parseFloat(amt);
+if(isNaN(val)){
+alert("Invalid amount"); return;
+}
+
+r.folio += val;
+
+logs.push({
+bizDate:businessDate,time:new Date().toLocaleTimeString(),
+room:no,action:"Charge Post / Stay On",
+guest:r.guest,rate:r.rate,plan:r.plan,source:r.source,amount:val
+});
+}
+
+save();
+render();
+}
+
+/* ---------- render ---------- */
+
+function render(){
+
+let g=document.getElementById("roomGrid");
+g.innerHTML="";
+
+let o=0,v=0,b=0;
+
+rooms.forEach(r=>{
+
+if(r.status==="Occupied") o++;
+if(r.status==="Vacant") v++;
+if(r.status==="Blocked") b++;
+
+if(filter!=="all" && r.status!==filter) return;
+
+let d=document.createElement("div");
+d.className="room-box "+
+(r.status==="Occupied"?"room-occupied":r.status==="Blocked"?"room-blocked":"room-vacant");
+
+let extra="";
+if(r.status==="Occupied" && r.checkInAt)
+extra="<div class='small'>IN "+new Date(r.checkInAt).toLocaleTimeString()+"</div>";
+
+let rp=r.rate?("<div class='small'>₹"+r.rate+" | "+r.plan+"</div>"):"";
+let src=r.source?("<div class='small'>"+r.source+"</div>"):"";
+let fol=r.status==="Occupied"?("<div class='small'>Folio ₹"+r.folio+"</div>"):"";
+
+d.innerHTML=
+"<div class='room-no'>"+r.roomNo+"</div>"+
+"<div>"+r.status+"</div>"+
+(r.guest?("<div class='small'>"+r.guest+"</div>"):"")+
+rp+src+fol+extra;
+
+d.onclick=()=>roomAction(r.roomNo);
+g.appendChild(d);
+});
+
+bizDate.innerText=businessDate;
+tTotal.innerText=rooms.length;
+tOcc.innerText=o;
+tVac.innerText=v;
+tBlk.innerText=b;
+tCo.innerText=todayCheckouts;
+}
+
+/* ---------- filter ---------- */
+
+function setFilter(f){filter=f;render();}
+
+/* ---------- night audit ---------- */
+
+function nightAudit(){
+
+if(!confirm("Run night audit and move business date to next day?")) return;
+
+businessDate = nextDate(businessDate);
+todayCheckouts = 0;
+
+save();
+render();
+
+alert("Night audit done.\nBusiness date : "+businessDate);
+}
+
+/* ---------- reset ---------- */
+
+function resetAll(){
+if(!confirm("Reset all PMS data?")) return;
+localStorage.removeItem(KEY);
+init();
+render();
+}
+
+/* ---------- exports ---------- */
+
+function exportCurrent(){
+
+let csv="Room No,Status,Guest,Rate,Plan,Source,Folio,Business Date,Check In,Last Check Out\n";
+
+rooms.forEach(r=>{
+
+let g=r.status==="Occupied"?r.guest:r.lastGuest;
+let rate=r.status==="Occupied"?r.rate:r.lastRate;
+let plan=r.status==="Occupied"?r.plan:r.lastPlan;
+let src=r.status==="Occupied"?r.source:r.lastSource;
+
+let inT=r.checkInAt?new Date(r.checkInAt).toLocaleString():"";
+let outT=r.checkOutAt?new Date(r.checkOutAt).toLocaleString():"";
+
+csv+=`"${r.roomNo}","${r.status}","${g||""}","${rate||""}","${plan||""}","${src||""}","${r.folio}","${businessDate}","${inT}","${outT}"\n`;
+});
+
+download(csv,"room-current-status.csv");
+}
+
+function exportDaily(){
+
+let csv="Business Date,Time,Room,Action,Guest,Rate,Plan,Source,Amount\n";
+
+logs.forEach(l=>{
+csv+=`"${l.bizDate}","${l.time}","${l.room}","${l.action}","${l.guest}","${l.rate}","${l.plan}","${l.source}","${l.amount}"\n`;
+});
+
+download(csv,"room-daily-report.csv");
+}
+
+/* ---------- helper ---------- */
+
+function download(c,f){
+let b=new Blob([c],{type:"text/csv"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(b);
+a.download=f;
+a.click();
+}
+
+/* ---------- start ---------- */
+
+load();
+render();
+
+</script>
+</body>
+</html>
