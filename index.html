@@ -623,15 +623,32 @@ function setFilter(f){filter=f;render();}
 
 function nightAudit(){
 
-if(!confirm("Run night audit and move business date to next day?")) return;
+/* allow only after system date changes */
+let systemDate = todayISO();   // current system date
+if(systemDate === businessDate){
+alert("Night Audit can be done only after 12:00 AM (system date change).");
+return;
+}
 
-businessDate = nextDate(businessDate);
+if(!confirm("Before night audit, Daily Report will be exported automatically.\nContinue?"))
+return;
+
+/* auto export daily report before audit */
+exportDaily();
+
+/* small delay so file download triggers first */
+setTimeout(()=>{
+
+businessDate = systemDate;   // move business date to new system date
 todayCheckouts = 0;
 
 save();
 render();
 
 alert("Night audit done.\nBusiness date : "+businessDate);
+
+},300);
+
 }
 
 /* ---------- reset ---------- */
