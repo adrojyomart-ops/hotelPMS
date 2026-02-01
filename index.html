@@ -93,13 +93,20 @@ let bookingSources=[];
 let businessDate="";
 
 const KEY="ROHIT_PMS_V6";
-const API_URL="https://script.google.com/macros/s/AKfycbzXNd7NPsdZnQhQYd95sUIHUYzWDtLv4_XPsCGZGnfhnmhiErR8qVc1UuUGGUehb1EA/exec";
 
 /* ---------- helpers ---------- */
 
-function todayISO(){return new Date().toISOString().slice(0,10);}
-function now(){return new Date().toISOString();}
-function nextDate(d){let x=new Date(d);x.setDate(x.getDate()+1);return x.toISOString().slice(0,10);}
+function todayISO(){
+return new Date().toISOString().slice(0,10);
+}
+function now(){
+return new Date().toISOString();
+}
+function nextDate(d){
+let x=new Date(d);
+x.setDate(x.getDate()+1);
+return x.toISOString().slice(0,10);
+}
 
 /* ---------- init ---------- */
 
@@ -132,95 +139,26 @@ checkOutAt:""
 bookingSources=["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
 logs=[];
 todayCheckouts=0;
-
 save();
 }
 
 /* ---------- storage ---------- */
 
 function save(){
-
-fetch(API_URL,{
-method:"POST",
-headers:{ "Content-Type":"application/json" },
-body: JSON.stringify({
-key:KEY,
-data:{ rooms,logs,todayCheckouts,bookingSources,businessDate }
-})
-});
-
+localStorage.setItem(KEY,JSON.stringify({
+rooms,logs,todayCheckouts,bookingSources,businessDate
+}));
 }
 
-async function load(){
-
-try{
-
-let res = await fetch(API_URL + "?key=" + KEY);
-let d = await res.json();
-
-/* ✅ correct handling for Apps Script response */
-
-let data = d.data ? d.data : d;
-
-/* first time only */
-if(!data || !data.rooms){
-
-console.warn("No data found in DB");
-
-rooms=[];
-roomNumbers.forEach(n=>{
-rooms.push({
-roomNo:n,
-status:"Vacant",
-guest:"",
-rate:"",
-plan:"",
-source:"",
-folio:0,
-lastGuest:"",
-lastRate:"",
-lastPlan:"",
-lastSource:"",
-checkInAt:"",
-checkOutAt:""
-});
-});
-
-logs=[];
-bookingSources=["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
-businessDate=todayISO();
-todayCheckouts=0;
-
-/* ⚠️ IMPORTANT : yahan save() mat call karo */
-return;
-}
-
-/* normal load */
-
-rooms = data.rooms;
-logs = data.logs || [];
-bookingSources = data.bookingSources || ["Walk-in"];
-businessDate = data.businessDate || todayISO();
-todayCheckouts = data.todayCheckouts || 0;
-
-}catch(e){
-alert("DB load failed");
-console.log(e);
-}
-
-}
-
-rooms = d.rooms || [];
-logs = d.logs || [];
-bookingSources = d.bookingSources || ["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
-businessDate = d.businessDate || todayISO();
-todayCheckouts = d.todayCheckouts || 0;
-
-}catch(e){
-alert("DB load failed");
-console.log(e);
-}
-
+function load(){
+let d=localStorage.getItem(KEY);
+if(!d){init();return;}
+d=JSON.parse(d);
+rooms=d.rooms||[];
+logs=d.logs||[];
+bookingSources=d.bookingSources||["Walk-in"];
+businessDate=d.businessDate||todayISO();
+todayCheckouts=d.todayCheckouts||0;
 }
 
 /* ---------- booking source ---------- */
@@ -249,7 +187,7 @@ alert("Invalid choice"); return null;
 return bookingSources[i-1];
 }
 
-/* ---------- PLAN chooser ---------- */
+/* ---------- PLAN chooser (validated) ---------- */
 
 function choosePlan(){
 
@@ -480,6 +418,7 @@ alert("Night audit done.\nBusiness date : "+businessDate);
 
 function resetAll(){
 if(!confirm("Reset all PMS data?")) return;
+localStorage.removeItem(KEY);
 init();
 render();
 }
@@ -529,9 +468,9 @@ a.click();
 
 /* ---------- start ---------- */
 
-load().then(render);
+load();
+render();
 
 </script>
 </body>
 </html>
-
