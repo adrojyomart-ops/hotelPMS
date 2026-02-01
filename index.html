@@ -46,6 +46,25 @@ padding:4px;
 
 .room-no{font-weight:bold;font-size:15px}
 .small{font-size:11px}
+.badge{
+display:inline-block;
+padding:2px 5px;
+border-radius:4px;
+font-size:10px;
+margin:2px 1px;
+color:#fff;
+}
+
+.badge-day{background:#f39c12;}
+.badge-night{background:#2980b9;}
+.badge-stay{background:#8e44ad;}
+
+.room-arrival{
+background:#f1c40f;
+color:#000;
+}
+
+
 </style>
 </head>
 <body>
@@ -137,7 +156,18 @@ lastPlan:"",
 lastSource:"",
 
 checkInAt:"",
-checkOutAt:""
+checkOutAt:"",
+
+dayUse:false,
+nightStay:false,
+stayOn:false,
+
+arrivalGuest:"",
+todayArrival:false,
+arrivalSource:"",
+arrivalRate:""
+
+
 });
 });
 
@@ -282,20 +312,24 @@ return null;
 
 function roomAction(no){
 
-let r=rooms.find(x=>x.roomNo===no);
+let r = rooms.find(x => x.roomNo === no);
 
-let menu=
+let menu =
 "Room "+no+" ("+r.status+")\n"+
 "1 Check In\n"+
 "2 Check Out\n"+
 "3 Block(Maint)\n"+
 "4 Unblock\n";
 
-if(r.status==="Occupied"){
-menu+="5 Stay On / Post Charge\n";
+if(r.status === "Occupied"){
+menu += "5 Stay On / Post Charge\n";
 }
 
-let c=prompt(menu);
+if(r.status === "Vacant"){
+menu += "6 Assign Today Arrival\n";
+}
+
+let c = prompt(menu);
 if(!c) return;
 
 /* ---- Check In ---- */
@@ -315,6 +349,18 @@ if(!plan) return;
 
 let src=chooseBookingSource();
 if(!src) return;
+let stayType = prompt(
+"Select stay type\n\n1 = Day Use\n2 = Night Stay",
+"2"
+);
+
+r.dayUse = false;
+r.nightStay = false;
+r.stayOn = false;
+
+if(stayType==="1") r.dayUse = true;
+else r.nightStay = true;
+
 
 r.guest=g;
 r.rate=rate;
@@ -328,6 +374,10 @@ r.lastPlan=plan;
 r.lastSource=src;
 
 r.status="Occupied";
+r.todayArrival = false;
+r.arrivalGuest = "";
+r.arrivalSource="";
+r.arrivalRate="";
 r.checkInAt=now();
 r.checkOutAt="";
 
@@ -357,8 +407,32 @@ r.rate="";
 r.plan="";
 r.source="";
 r.status="Vacant";
+r.dayUse=false;
+r.nightStay=false;
+r.stayOn=false;
+
 
 todayCheckouts++;
+}
+
+else if(c==="6" && r.status==="Vacant"){
+
+let g = prompt("Today arrival guest name");
+if(!g) return;
+
+/* optional fields */
+let src = prompt("Arrival source (optional)");
+let rate = prompt("Arrival rate (optional)");
+
+r.arrivalGuest = g;
+r.arrivalSource = src || "";
+r.arrivalRate   = rate || "";
+r.todayArrival  = true;
+
+save();
+render();
+
+alert("Today arrival assigned to room "+no);
 }
 
 /* ---- Block ---- */
@@ -370,12 +444,40 @@ if(r.status==="Occupied"){alert("Occupied room");return;}
 r.guest="";r.rate="";r.plan="";r.source="";
 r.status="Blocked";
 r.checkInAt="";r.checkOutAt="";
+r.dayUse=false;
+r.nightStay=false;
+r.stayOn=false;
+r.todayArrival=false;
+r.arrivalGuest="";
+r.arrivalSource="";
+r.arrivalRate="";
+
 
 logs.push({
 bizDate:businessDate,time:new Date().toLocaleTimeString(),
 room:no,action:"Blocked",guest:"",rate:"",plan:"",source:"",amount:""
 });
 }
+else if(c==="6" && r.status==="Vacant"){
+
+let g = prompt("Today arrival guest name");
+if(!g) return;
+
+/* optional fields */
+let src = prompt("Arrival source (optional)");
+let rate = prompt("Arrival rate (optional)");
+
+r.arrivalGuest = g;
+r.arrivalSource = src || "";
+r.arrivalRate   = rate || "";
+r.todayArrival  = true;
+
+save();
+render();
+
+alert("Today arrival assigned to room "+no);
+}
+
 
 /* ---- Unblock ---- */
 
@@ -384,11 +486,38 @@ else if(c==="4"){
 r.guest="";r.rate="";r.plan="";r.source="";
 r.status="Vacant";
 r.checkInAt="";r.checkOutAt="";
+r.dayUse=false;
+r.nightStay=false;
+r.stayOn=false;
+r.todayArrival=false;
+r.arrivalGuest="";
+r.arrivalSource="";
+r.arrivalRate="";
+
 
 logs.push({
 bizDate:businessDate,time:new Date().toLocaleTimeString(),
 room:no,action:"Unblocked",guest:"",rate:"",plan:"",source:"",amount:""
 });
+}
+else if(c==="6" && r.status==="Vacant"){
+
+let g = prompt("Today arrival guest name");
+if(!g) return;
+
+/* optional fields */
+let src = prompt("Arrival source (optional)");
+let rate = prompt("Arrival rate (optional)");
+
+r.arrivalGuest = g;
+r.arrivalSource = src || "";
+r.arrivalRate   = rate || "";
+r.todayArrival  = true;
+
+save();
+render();
+
+alert("Today arrival assigned to room "+no);
 }
 
 /* ---- Stay on + Charge post ---- */
@@ -404,6 +533,7 @@ alert("Invalid amount"); return;
 }
 
 r.folio += val;
+r.stayOn = true;
 
 logs.push({
 bizDate:businessDate,time:new Date().toLocaleTimeString(),
@@ -435,7 +565,10 @@ if(filter!=="all" && r.status!==filter) return;
 
 let d=document.createElement("div");
 d.className="room-box "+
-(r.status==="Occupied"?"room-occupied":r.status==="Blocked"?"room-blocked":"room-vacant");
+(r.status==="Occupied"?"room-occupied":
+ r.status==="Blocked"?"room-blocked":
+ r.todayArrival?"room-arrival":"room-vacant");
+
 
 let extra="";
 if(r.status==="Occupied" && r.checkInAt)
@@ -444,12 +577,31 @@ extra="<div class='small'>IN "+new Date(r.checkInAt).toLocaleTimeString()+"</div
 let rp=r.rate?("<div class='small'>₹"+r.rate+" | "+r.plan+"</div>"):"";
 let src=r.source?("<div class='small'>"+r.source+"</div>"):"";
 let fol=r.status==="Occupied"?("<div class='small'>Folio ₹"+r.folio+"</div>"):"";
+let arr = "";
+
+if(r.todayArrival && r.arrivalGuest){
+
+arr =
+"<div class='small'>Arrival: "+r.arrivalGuest+"</div>" +
+(r.arrivalSource ? "<div class='small'>Src: "+r.arrivalSource+"</div>" : "") +
+(r.arrivalRate ? "<div class='small'>Rate: ₹"+r.arrivalRate+"</div>" : "");
+
+}
+
+let badge = "";
+
+if(r.status==="Occupied"){
+if(r.dayUse) badge += "<span class='badge badge-day'>Day Use</span> ";
+if(r.nightStay) badge += "<span class='badge badge-night'>Night Stay</span> ";
+if(r.stayOn) badge += "<span class='badge badge-stay'>Stay On</span>";
+}
+
 
 d.innerHTML=
 "<div class='room-no'>"+r.roomNo+"</div>"+
 "<div>"+r.status+"</div>"+
 (r.guest?("<div class='small'>"+r.guest+"</div>"):"")+
-rp+src+fol+extra;
+rp+src+fol+arr+badge+extra;
 
 d.onclick=()=>roomAction(r.roomNo);
 g.appendChild(d);
