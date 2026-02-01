@@ -93,6 +93,7 @@ let bookingSources=[];
 let businessDate="";
 
 const KEY="ROHIT_PMS_V6";
+const API_URL = "https://script.google.com/macros/s/AKfycbzXNd7NPsdZnQhQYd95sUIHUYzWDtLv4_XPsCGZGnfhnmhiErR8qVc1UuUGGUehb1EA/exec";  
 
 /* ---------- helpers ---------- */
 
@@ -145,20 +146,44 @@ save();
 /* ---------- storage ---------- */
 
 function save(){
-localStorage.setItem(KEY,JSON.stringify({
-rooms,logs,todayCheckouts,bookingSources,businessDate
-}));
+
+fetch(API_URL,{
+  method:"POST",
+  headers:{ "Content-Type":"application/json" },
+  body: JSON.stringify({
+    key: KEY,
+    data:{
+      rooms,logs,todayCheckouts,bookingSources,businessDate
+    }
+  })
+});
+
 }
 
-function load(){
-let d=localStorage.getItem(KEY);
-if(!d){init();return;}
-d=JSON.parse(d);
-rooms=d.rooms||[];
-logs=d.logs||[];
-bookingSources=d.bookingSources||["Walk-in"];
-businessDate=d.businessDate||todayISO();
-todayCheckouts=d.todayCheckouts||0;
+async function load(){
+
+try{
+
+let res = await fetch(API_URL + "?key=" + KEY);
+let d = await res.json();
+
+if(!d || !d.rooms){
+  init();
+  return;
+}
+
+rooms = d.rooms || [];
+logs = d.logs || [];
+bookingSources = d.bookingSources || ["Walk-in"];
+businessDate = d.businessDate || todayISO();
+todayCheckouts = d.todayCheckouts || 0;
+
+}catch(e){
+  alert("DB load failed");
+  console.log(e);
+  init();
+}
+
 }
 
 /* ---------- booking source ---------- */
@@ -468,9 +493,10 @@ a.click();
 
 /* ---------- start ---------- */
 
-load();
-render();
+load().then(render);
+
 
 </script>
 </body>
 </html>
+
