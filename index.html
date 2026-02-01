@@ -168,8 +168,31 @@ let res = await fetch(API_URL + "?key=" + KEY);
 let d = await res.json();
 
 if(!d || !d.rooms){
-  init();
+
+  // DB empty – first time only
+  rooms = [];
+  logs = [];
+  bookingSources = ["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
+  businessDate = todayISO();
+  todayCheckouts = 0;
+
   return;
+}
+
+rooms = d.rooms || [];
+logs = d.logs || [];
+bookingSources = d.bookingSources || ["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
+businessDate = d.businessDate || todayISO();
+todayCheckouts = d.todayCheckouts || 0;
+
+}catch(e){
+
+alert("DB load failed");
+console.log(e);
+
+// ⚠️ yahan init() mat call karo
+}
+
 }
 
 rooms = d.rooms || [];
@@ -499,4 +522,5 @@ load().then(render);
 </script>
 </body>
 </html>
+
 
