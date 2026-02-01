@@ -158,25 +158,29 @@ try{
 let res = await fetch(API_URL + "?key=" + KEY);
 let d = await res.json();
 
-if(!d || !d.rooms){
+/* ✅ correct handling for Apps Script response */
+
+let data = d.data ? d.data : d;
+
+/* first time only */
+if(!data || !data.rooms){
+
+console.warn("No data found in DB");
 
 rooms=[];
 roomNumbers.forEach(n=>{
 rooms.push({
 roomNo:n,
 status:"Vacant",
-
 guest:"",
 rate:"",
 plan:"",
 source:"",
 folio:0,
-
 lastGuest:"",
 lastRate:"",
 lastPlan:"",
 lastSource:"",
-
 checkInAt:"",
 checkOutAt:""
 });
@@ -187,8 +191,23 @@ bookingSources=["Walk-in","MakeMyTrip","Goibibo","Booking.com","Agoda"];
 businessDate=todayISO();
 todayCheckouts=0;
 
-save();
+/* ⚠️ IMPORTANT : yahan save() mat call karo */
 return;
+}
+
+/* normal load */
+
+rooms = data.rooms;
+logs = data.logs || [];
+bookingSources = data.bookingSources || ["Walk-in"];
+businessDate = data.businessDate || todayISO();
+todayCheckouts = data.todayCheckouts || 0;
+
+}catch(e){
+alert("DB load failed");
+console.log(e);
+}
+
 }
 
 rooms = d.rooms || [];
@@ -515,3 +534,4 @@ load().then(render);
 </script>
 </body>
 </html>
+
