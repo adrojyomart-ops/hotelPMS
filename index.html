@@ -745,11 +745,23 @@ let clean = [];
 
 list.forEach(a => {
 
-let key =
+let key;
+
+/* main key = Res No if available */
+if(a.resNo && a.resNo.trim() !== ""){
+key = "RES|" + a.resNo.trim();
+}
+else{
+/* fallback (old logic) */
+key =
 (a.guest || "").trim() + "|" +
 (a.arrivalDate || "") + "|" +
+(a.rate || "") + "|" +
+(a.plan || "") + "|" +
+(a.source || "") + "|" +
 (a.room || "") + "|" +
 (a.status || "");
+}
 
 if(!seen[key]){
 seen[key] = true;
@@ -993,6 +1005,7 @@ h.toLowerCase() === name.toLowerCase()
 }
 
 let cGuest   = col("Guest");
+let cResNo   = col("Res. No.");
 let cRoom    = col("Room");
 let cRate    = col("Rate(Rs)");
 let cArrival = col("Arrival");
@@ -1025,16 +1038,34 @@ let ad = parseEzeeDate(arrRaw);
 let roomClean = cleanRoom(row[cRoom]);
 
 /* duplicate check (guest + date + room) */
-let exists = arrivals.some(x =>
-   x.guest === guest &&
-   x.arrivalDate === ad &&
-   x.room === roomClean &&
-   x.status === "Pending"
-);
+let resNo = cResNo >= 0 ? row[cResNo].trim() : "";
+
+let exists;
+
+if(resNo){
+    // primary key = Res No
+    exists = arrivals.some(x =>
+        x.resNo === resNo
+    );
+}
+else{
+    // fallback key when Res No missing
+    exists = arrivals.some(x =>
+        x.guest === guest &&
+        x.arrivalDate === ad &&
+        x.rate === cleanNumber(row[cRate]) &&
+        (x.plan || "") === (row[cPlan] || "") &&
+        (x.source || "") === (row[cSource] || "") &&
+        (x.room || "") === roomClean &&
+        x.status === "Pending"
+    );
+}
+
 
 if(exists) continue;
 
 arrivals.push({
+resNo   : cResNo >= 0 ? row[cResNo].trim() : "",
 guest   : guest,
 arrivalDate : ad,
 room    : roomClean,
@@ -1043,6 +1074,7 @@ plan    : row[cPlan] || "",
 source  : row[cSource] || "",
 status  : "Pending"
 });
+
 
 
 added++;
