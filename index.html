@@ -85,6 +85,8 @@ color:#000;
 <button onclick="manualBackup()">Manual Backup</button>
 <button onclick="manualRestore()">Restore Backup</button>
 <button onclick="openDataManager()">Edit / Delete Data</button>
+<button onclick="openArrivalWindow()">Arrival List</button>
+<input type="file" id="arrivalFile" accept=".csv" style="display:none" onchange="importArrivalCSV(this)">
 </div>
 
 <div class="dashboard">
@@ -99,6 +101,10 @@ color:#000;
 <div id="roomGrid" class="room-grid"></div>
 
 <script>
+
+let arrivals = [];
+let arrivalFromDate = null;
+let arrivalToDate   = null;
 
 const roomNumbers=[
 "001","002",
@@ -219,7 +225,7 @@ return true;
 function save(){
 
 let payload = JSON.stringify({
-rooms,logs,todayCheckouts,bookingSources,businessDate
+rooms,logs,todayCheckouts,bookingSources,businessDate,arrivals
 });
 
 fetch(SERVER_URL,{
@@ -249,6 +255,9 @@ logs=d.logs||[];
 bookingSources=d.bookingSources||["Walk-in"];
 businessDate=d.businessDate||todayISO();
 todayCheckouts=d.todayCheckouts||0;
+
+arrivals = d.arrivals || [];
+arrivals = removeDuplicateArrivals(arrivals);
 
 render();
 
@@ -615,9 +624,493 @@ tBlk.innerText=b;
 tCo.innerText=todayCheckouts;
 }
 
-/* ---------- filter ---------- */
+function renderArrivalList(){
 
-function setFilter(f){filter=f;render();}
+let box = document.getElementById("arrivalList");
+if(!box) return;
+
+box.innerHTML = "";
+
+/* ---- Pending list ---- */
+let pending = arrivals.filter(a => {
+
+if(a.status!=="Pending") return false;
+
+/* default : only business date */
+if(!arrivalFromDate || !arrivalToDate){
+return a.arrivalDate === businessDate;
+}
+
+/* range mode */
+return a.arrivalDate >= arrivalFromDate &&
+       a.arrivalDate <= arrivalToDate;
+
+});
+
+
+/* ---- Arrived / CheckedIn list ---- */
+let arrived = arrivals.filter(a => {
+
+if(a.status!=="CheckedIn") return false;
+
+/* default : only business date */
+if(!arrivalFromDate || !arrivalToDate){
+return a.arrivalDate === businessDate;
+}
+
+/* range mode */
+return a.arrivalDate >= arrivalFromDate &&
+       a.arrivalDate <= arrivalToDate;
+
+});
+
+
+/* ---------- Pending Section ---------- */
+
+let h1 = document.createElement("h4");
+h1.innerText = "Pending Arrivals ("+pending.length+")";
+box.appendChild(h1);
+
+if(pending.length===0){
+let d=document.createElement("div");
+d.className="small";
+d.innerText="No pending arrivals";
+box.appendChild(d);
+}
+
+pending.forEach((a,i)=>{
+
+let isToday = (a.arrivalDate === businessDate);
+
+let d=document.createElement("div");
+d.style.border="1px solid #ddd";
+d.style.padding="6px";
+d.style.marginBottom="6px";
+d.style.background = isToday ? "#fff" : "#ffecec";
+
+d.innerHTML = `
+<b>${a.guest}</b><br>
+Arrival: ${a.arrivalDate}<br>
+Room: ${a.room || "-"}<br>
+₹${a.rate || ""} | ${a.plan || ""}<br>
+${a.source || ""}<br>
+${isToday
+? `<button onclick="checkInFromArrivalPending(${i})">Check In</button>`
+: `<div style="color:red;font-size:11px">Not for business date</div>`
+}
+`;
+
+box.appendChild(d);
+});
+
+
+/* ---------- Arrived Section ---------- */
+
+let h2 = document.createElement("h4");
+h2.style.marginTop="10px";
+h2.innerText = "Arrived / Checked-In ("+arrived.length+")";
+box.appendChild(h2);
+
+if(arrived.length===0){
+let d=document.createElement("div");
+d.className="small";
+d.innerText="No arrived guests";
+box.appendChild(d);
+}
+
+arrived.forEach(a=>{
+
+let d=document.createElement("div");
+d.style.border="1px solid #ddd";
+d.style.padding="6px";
+d.style.marginBottom="6px";
+d.style.background="#f4f6f8";
+
+d.innerHTML = `
+<b>${a.guest}</b><br>
+Arrival: ${a.arrivalDate}<br>
+Room: ${a.room || "-"}<br>
+₹${a.rate || ""} | ${a.plan || ""}<br>
+${a.source || ""}
+`;
+
+box.appendChild(d);
+});
+
+}
+function removeDuplicateArrivals(list){
+
+let seen = {};
+let clean = [];
+
+list.forEach(a => {
+
+let key =
+(a.guest || "").trim() + "|" +
+(a.arrivalDate || "") + "|" +
+(a.room || "") + "|" +
+(a.status || "");
+
+if(!seen[key]){
+seen[key] = true;
+clean.push(a);
+}
+
+});
+
+return clean;
+}
+
+
+function checkInFromArrival(index){
+
+let list = arrivals.filter(a => a.status==="Pending");
+let a = list[index];
+
+if(!a){
+alert("Arrival not found");
+return;
+}
+
+let roomNo = a.room;
+
+if(!roomNo){
+roomNo = prompt("Assign room number");
+}
+
+let r = rooms.find(x=>x.roomNo===roomNo);
+
+if(!r){
+alert("Room not found");
+return;
+}
+
+if(r.status!=="Vacant"){
+alert("Room not vacant");
+return;
+}
+
+r.guest = a.guest;
+r.rate  = a.rate;
+r.plan  = a.plan;
+r.source= a.source;
+
+r.status="Occupied";
+r.checkInAt=now();
+r.dayUse=false;
+r.nightStay=true;
+r.stayOn=false;
+r.folio=0;
+
+logs.push({
+bizDate:businessDate,
+time:new Date().toLocaleTimeString(),
+room:roomNo,
+action:"Check In (Arrival List)",
+guest:r.guest,
+rate:r.rate,
+plan:r.plan,
+source:r.source,
+amount:""
+});
+
+a.status="CheckedIn";
+
+save();
+render();
+renderArrivalList();
+}
+function applyArrivalRange(){
+
+let f = document.getElementById("arrFrom").value;
+let t = document.getElementById("arrTo").value;
+
+if(!f || !t){
+alert("Select both From and To date");
+return;
+}
+
+arrivalFromDate = f;
+arrivalToDate   = t;
+
+renderArrivalList();
+}
+
+function resetArrivalRange(){
+
+arrivalFromDate = null;
+arrivalToDate   = null;
+
+document.getElementById("arrFrom").value = "";
+document.getElementById("arrTo").value   = "";
+
+renderArrivalList();
+}
+
+function checkInFromArrivalPending(index){
+
+let pending = arrivals.filter(a => {
+
+if(a.status!=="Pending") return false;
+
+/* default : only business date */
+if(!arrivalFromDate || !arrivalToDate){
+return a.arrivalDate === businessDate;
+}
+
+/* range mode */
+return a.arrivalDate >= arrivalFromDate &&
+       a.arrivalDate <= arrivalToDate;
+
+});
+
+let a = pending[index];
+
+if(!a){
+alert("Arrival not found");
+return;
+}
+
+/* ---- BUSINESS DATE VALIDATION ---- */
+if(a.arrivalDate !== businessDate){
+alert("This arrival is for "+a.arrivalDate+
+      ".\nBusiness date is "+businessDate+
+      ".\nCheck-in not allowed.");
+return;
+}
+
+let roomNo = a.room;
+
+if(!roomNo){
+roomNo = prompt("Assign room number");
+}
+
+let r = rooms.find(x=>x.roomNo===roomNo);
+
+if(!r){
+alert("Room not found");
+return;
+}
+
+if(r.status!=="Vacant"){
+alert("Room not vacant");
+return;
+}
+
+/* ---- check in ---- */
+
+r.guest = a.guest;
+r.rate  = a.rate;
+r.plan  = a.plan;
+r.source= a.source;
+
+r.status="Occupied";
+r.checkInAt=now();
+r.dayUse=false;
+r.nightStay=true;
+r.stayOn=false;
+r.folio=0;
+
+logs.push({
+bizDate:businessDate,
+time:new Date().toLocaleTimeString(),
+room:roomNo,
+action:"Check In (Arrival List)",
+guest:r.guest,
+rate:r.rate,
+plan:r.plan,
+source:r.source,
+amount:""
+});
+
+/* mark only that arrival as checked in */
+let realObj = arrivals.find(x =>
+x.guest===a.guest &&
+x.arrivalDate===a.arrivalDate &&
+x.room===a.room &&
+x.status==="Pending"
+);
+
+if(realObj){
+realObj.status="CheckedIn";
+}
+
+save();
+render();
+renderArrivalList();
+
+}
+
+
+function importArrivalCSV(input){
+
+let file = input.files[0];
+if(!file) return;
+
+let reader = new FileReader();
+
+reader.onload = function(e){
+
+let text = e.target.result;
+
+/* eZee CSV safely parse */
+let lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+if(lines.length < 2){
+alert("File empty");
+return;
+}
+
+/* split respecting commas inside values (simple safe split) */
+function splitCSV(line){
+let result = [];
+let cur = '';
+let inQuotes = false;
+
+for(let i=0;i<line.length;i++){
+let ch = line[i];
+
+if(ch === '"'){
+inQuotes = !inQuotes;
+}
+else if(ch === ',' && !inQuotes){
+result.push(cur);
+cur='';
+}
+else{
+cur += ch;
+}
+}
+result.push(cur);
+return result.map(v=>v.replace(/^"|"$|^\s+|\s+$/g,''));
+}
+
+let headers = splitCSV(lines[0]).map(h=>h.trim());
+
+function col(name){
+return headers.findIndex(h =>
+h.toLowerCase() === name.toLowerCase()
+);
+}
+
+let cGuest   = col("Guest");
+let cRoom    = col("Room");
+let cRate    = col("Rate(Rs)");
+let cArrival = col("Arrival");
+let cSource  = col("Business Source");
+let cPlan    = col("Rate Type");
+
+if(cGuest<0 || cArrival<0){
+alert("This file does not look like eZee arrival list.");
+return;
+}
+
+let added = 0;
+
+for(let i=1;i<lines.length;i++){
+
+let row = splitCSV(lines[i]);
+
+let guest = row[cGuest]?.trim();
+if(!guest) continue;
+
+/* skip TOTAL line */
+if(guest.startsWith("#") || guest.toLowerCase().includes("total")) continue;
+
+/* arrival date -> YYYY-MM-DD */
+let arrRaw = row[cArrival]?.trim();
+if(!arrRaw) continue;
+
+let ad = parseEzeeDate(arrRaw);
+
+let roomClean = cleanRoom(row[cRoom]);
+
+/* duplicate check (guest + date + room) */
+let exists = arrivals.some(x =>
+   x.guest === guest &&
+   x.arrivalDate === ad &&
+   x.room === roomClean &&
+   x.status === "Pending"
+);
+
+if(exists) continue;
+
+arrivals.push({
+guest   : guest,
+arrivalDate : ad,
+room    : roomClean,
+rate    : cleanNumber(row[cRate]),
+plan    : row[cPlan] || "",
+source  : row[cSource] || "",
+status  : "Pending"
+});
+
+
+added++;
+}
+
+save();
+renderArrivalList();
+
+alert(added+" arrivals imported from eZee.");
+
+};
+
+reader.readAsText(file);
+}
+function parseEzeeDate(v){
+
+/* format: 03/02/2026 10:27:26 AM */
+
+let p = v.split(" ");
+let d = p[0].split("/");
+
+let dd = d[0];
+let mm = d[1];
+let yy = d[2];
+
+return yy+"-"+mm.padStart(2,"0")+"-"+dd.padStart(2,"0");
+}
+function cleanRoom(v){
+
+if(!v) return "";
+
+v = v.replace(/\u00A0/g," ").trim();
+
+/* "002 - Classic Room" -> "002" */
+let m = v.match(/\d+/);
+return m ? m[0].padStart(3,"0") : "";
+}
+function cleanNumber(v){
+
+if(!v) return "";
+
+return v.replace(/,/g,"").trim();
+}
+function openArrivalWindow(){
+
+let w = document.getElementById("arrivalWin");
+
+if(!w){
+alert("arrival window not found");
+return;
+}
+
+w.style.display = "block";
+
+document.getElementById("arrFrom").value = businessDate;
+document.getElementById("arrTo").value   = businessDate;
+
+arrivalFromDate = null;
+arrivalToDate   = null;
+
+
+if(typeof renderArrivalList === "function"){
+renderArrivalList();
+}
+}
+function closeArrivalWindow(){
+document.getElementById("arrivalWin").style.display="none";
+}
 
 /* ---------- night audit ---------- */
 
@@ -806,5 +1299,40 @@ alert("Logs deleted for room "+no);
 
 
 </script>
+<div id="arrivalWin" style="
+display:none;
+position:fixed;
+right:10px;
+top:10px;
+width:360px;
+height:90%;
+background:#fff;
+border-radius:8px;
+box-shadow:0 0 10px rgba(0,0,0,.2);
+padding:10px;
+overflow:auto;
+z-index:9999">
+
+<div style="display:flex;justify-content:space-between;align-items:center;">
+  <h3 style="margin:0">Today Arrivals</h3>
+  <button onclick="closeArrivalWindow()">✖</button>
+</div>
+
+<button onclick="document.getElementById('arrivalFile').click()">
+Upload eZee Arrival CSV
+</button>
+
+<div style="margin:6px 0;font-size:12px">
+From :
+<input type="date" id="arrFrom">
+To :
+<input type="date" id="arrTo">
+<button onclick="applyArrivalRange()">Go</button>
+<button onclick="resetArrivalRange()">Today</button>
+</div>
+
+<div id="arrivalList"></div>
+</div>
+
 </body>
 </html>
