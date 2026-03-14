@@ -1143,6 +1143,143 @@ renderArrivalList();
 function closeArrivalWindow(){
 document.getElementById("arrivalWin").style.display="none";
 }
+function importInhouseCSV(input){
+
+let file = input.files[0];
+if(!file) return;
+
+let reader = new FileReader();
+
+reader.onload = function(e){
+
+let text = e.target.result;
+
+let lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+if(lines.length < 2){
+alert("File empty");
+return;
+}
+
+function splitCSV(line){
+let result=[];
+let cur='';
+let inQuotes=false;
+
+for(let i=0;i<line.length;i++){
+let ch=line[i];
+
+if(ch=='"'){
+inQuotes=!inQuotes;
+}
+else if(ch==',' && !inQuotes){
+result.push(cur);
+cur='';
+}
+else{
+cur+=ch;
+}
+}
+result.push(cur);
+
+return result.map(v=>v.replace(/^"|"$|^\s+|\s+$/g,''));
+}
+
+let headers = splitCSV(lines[0]);
+
+function col(name){
+return headers.findIndex(h =>
+h.toLowerCase() === name.toLowerCase()
+);
+}
+
+let cRes   = col("Res No.");
+let cGuest = col("Guest Name");
+let cRoom  = col("Room Details");
+let cRate  = col("Rate");
+let cPlan  = col("Rate Type");
+let cSrc   = col("Business Source");
+let cArr   = col("Arrival Date");
+
+if(cRes <0 || cGuest <0){
+alert("Not valid eZee Inhouse report");
+return;
+}
+
+let imported = 0;
+
+for(let i=1;i<lines.length;i++){
+
+let row = splitCSV(lines[i]);
+
+let resNo = row[cRes]?.trim();
+if(!resNo) continue;
+
+/* DUPLICATE CHECK USING RES NO */
+
+let exists = arrivals.some(x => x.resNo === resNo);
+
+if(exists) continue;
+
+
+/* extract values */
+
+let guest = row[cGuest] || "";
+let room  = cleanRoom(row[cRoom]);
+let rate  = cleanNumber(row[cRate]);
+let plan  = row[cPlan] || "";
+let src   = row[cSrc] || "";
+
+let arrRaw = row[cArr] || "";
+let ad = parseEzeeDate(arrRaw);
+
+
+/* add into arrivals */
+
+arrivals.push({
+resNo : resNo,
+guest : guest,
+arrivalDate : ad,
+room  : room,
+rate  : rate,
+plan  : plan,
+source: src,
+status: "CheckedIn"
+});
+
+
+/* optional auto-room sync */
+
+let r = rooms.find(x => x.roomNo === room);
+
+if(r && r.status==="Vacant"){
+
+r.guest = guest;
+r.rate  = rate;
+r.plan  = plan;
+r.source= src;
+
+r.status="Occupied";
+r.checkInAt = now();
+r.nightStay = true;
+r.folio = 0;
+
+}
+
+imported++;
+
+}
+
+save();
+render();
+renderArrivalList();
+
+alert(imported + " InHouse guests imported.");
+
+};
+
+reader.readAsText(file);
+
+}
 
 /* ---------- night audit ---------- */
 
@@ -1353,6 +1490,8 @@ z-index:9999">
 <button onclick="document.getElementById('arrivalFile').click()">
 Upload eZee Arrival CSV
 </button>
+<input type="file" id="inhouseFile" accept=".csv" style="display:none" onchange="importInhouseCSV(this)">
+<button onclick="document.getElementById('inhouseFile').click()">Upload eZee InHouse CSV</button>
 
 <div style="margin:6px 0;font-size:12px">
 From :
